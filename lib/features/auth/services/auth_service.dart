@@ -35,6 +35,12 @@ class AuthService {
         throw Exception('Registrasi gagal. Silakan coba lagi.');
       }
 
+      // Check if user was actually created (not just returned existing user)
+      if (response.session == null) {
+        // User already exists, Supabase returns user but no session
+        throw Exception('Email sudah terdaftar. Gunakan email lain atau login.');
+      }
+
       // Profile akan otomatis dibuat oleh trigger di database
       // Tunggu sebentar untuk trigger selesai
       await Future.delayed(const Duration(seconds: 2));
