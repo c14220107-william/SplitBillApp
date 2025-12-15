@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/config/supabase_config.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/services/fcm_service.dart';
 import 'features/notifications/services/notification_service.dart';
@@ -15,20 +16,20 @@ final globalNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase
   await Firebase.initializeApp();
-  
+
   // Set background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  
+
   // Initialize Supabase
   await SupabaseConfig.initialize();
-  
+
   // Initialize local notifications
   final notificationService = NotificationService();
   await notificationService.initializeLocalNotifications();
-  
+
   // Setup realtime listener jika user sudah login
   final currentSession = Supabase.instance.client.auth.currentSession;
   if (currentSession != null) {
@@ -36,18 +37,18 @@ void main() async {
     FCMService().initialize();
     notificationService.setupRealtimeListener();
   }
-  
+
   // Setup deep link listener untuk email confirmation dengan logging detail
   Supabase.instance.client.auth.onAuthStateChange.listen((data) {
     final event = data.event;
     final session = data.session;
-    
+
     print('🔐 Auth event: $event');
     if (session?.user != null) {
       print('📧 Session: ${session!.user.email ?? "no email"}');
       print('✉️ Email confirmed: ${session.user.emailConfirmedAt != null}');
       print('👤 User ID: ${session.user.id}');
-      
+
       // Initialize FCM and realtime listener when user signs in
       if (event == AuthChangeEvent.signedIn) {
         print('✅ User signed in via deep link');
@@ -57,7 +58,7 @@ void main() async {
     } else {
       print('❌ No session/user');
     }
-    
+
     if (event == AuthChangeEvent.signedIn) {
       print('✅ User signed in via deep link');
     } else if (event == AuthChangeEvent.tokenRefreshed) {
@@ -66,7 +67,7 @@ void main() async {
       print('👤 User updated');
     }
   });
-  
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -76,15 +77,23 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
       title: 'Splitbillers',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme.copyWith(
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
+      ),
+      darkTheme: AppTheme.darkTheme.copyWith(
         textTheme: GoogleFonts.poppinsTextTheme(
-          Theme.of(context).textTheme,
+          Theme.of(context).textTheme.apply(
+            bodyColor: Colors.white,
+            displayColor: Colors.white,
+          ),
         ),
       ),
+      themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) {
         // Error boundary untuk menangani exception di widget tree

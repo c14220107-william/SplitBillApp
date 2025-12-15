@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:splitbillapp/core/config/supabase_config.dart';
 import 'package:splitbillapp/features/auth/providers/auth_provider.dart';
 import 'package:splitbillapp/core/services/storage_service.dart';
+import 'package:splitbillapp/core/theme/theme_provider.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -122,9 +123,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Logout'),
           ),
         ],
@@ -137,7 +136,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       try {
         // Use auth provider to sign out
         await ref.read(authStateProvider.notifier).signOut();
-        
+
         if (mounted) {
           // Navigate to login - router will handle redirect
           context.go('/login');
@@ -158,7 +157,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Future<void> _editProfile() async {
     final nameController = TextEditingController(text: _userName);
-    
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -231,9 +230,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final user = SupabaseConfig.client.auth.currentUser;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -295,10 +292,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       const SizedBox(height: 4),
                       Text(
                         _userEmail ?? '',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                       ),
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
@@ -314,10 +308,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 // Account Information
                 const Text(
                   'Account Information',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 Card(
@@ -355,10 +346,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 // Settings Section
                 const Text(
                   'Settings',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 Card(
@@ -378,10 +366,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       ListTile(
                         leading: const Icon(Icons.dark_mode),
                         title: const Text('Dark Mode'),
-                        trailing: Switch(
-                          value: false,
-                          onChanged: (value) {
-                            // TODO: Implement dark mode
+                        trailing: Consumer(
+                          builder: (context, ref, child) {
+                            final themeMode = ref.watch(themeModeProvider);
+                            final isDark = themeMode == ThemeMode.dark;
+
+                            return Switch(
+                              value: isDark,
+                              onChanged: (value) {
+                                ref
+                                    .read(themeModeProvider.notifier)
+                                    .toggleTheme(value);
+                              },
+                            );
                           },
                         ),
                       ),
@@ -393,10 +390,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 // About Section
                 const Text(
                   'About',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 Card(
@@ -460,7 +454,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
