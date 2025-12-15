@@ -201,6 +201,10 @@ class _AddItemsPageState extends ConsumerState<AddItemsPage> {
       );
       
       if (mounted) {
+        // Invalidate bill providers to refresh home page
+        ref.invalidate(myCreatedBillsProvider);
+        ref.invalidate(myInvitedBillsProvider);
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bill created successfully!'), backgroundColor: Colors.green),
         );
