@@ -59,6 +59,13 @@ class _AddItemsPageState extends ConsumerState<AddItemsPage> {
   bool _isLoading = false;
   Map<String, Profile> _profiles = {};
 
+String buildQtyLabel(double userQty) {
+  if (userQty % 1 == 0) {
+    return '${userQty.toInt()}x';
+  }
+  return 'Split';
+}
+
   @override
   void initState() {
     super.initState();
@@ -416,13 +423,14 @@ class _AddItemsPageState extends ConsumerState<AddItemsPage> {
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
-                                            'Split',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.blue[700],
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
+  buildQtyLabel(userQty),
+  style: TextStyle(
+    fontSize: 12,
+    color: Colors.blue[700],
+    fontWeight: FontWeight.w600,
+  ),
+),
+
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
