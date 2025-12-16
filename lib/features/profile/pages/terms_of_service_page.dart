@@ -47,12 +47,13 @@ class TermsOfServicePage extends StatelessWidget {
             ),
           ),
 
-          // Section 1
+          // Gabungkan Section 1, 2, 3, dan 4 menjadi satu card
           _buildCard(
             width: cardWidth,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
+                // Section 1
                 Text(
                   '1. Account Usage',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -64,16 +65,9 @@ class TermsOfServicePage extends StatelessWidget {
                   '• Any activity under your account is your responsibility.',
                   style: TextStyle(fontSize: 16, height: 1.5),
                 ),
-              ],
-            ),
-          ),
+                SizedBox(height: 16),
 
-          // Section 2
-          _buildCard(
-            width: cardWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+                // Section 2
                 Text(
                   '2. Data Privacy',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -84,16 +78,9 @@ class TermsOfServicePage extends StatelessWidget {
                   '• Your data will not be shared with third parties without your consent, except as required by law.',
                   style: TextStyle(fontSize: 16, height: 1.5),
                 ),
-              ],
-            ),
-          ),
+                SizedBox(height: 16),
 
-          // Section 3
-          _buildCard(
-            width: cardWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+                // Section 3
                 Text(
                   '3. User Conduct',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -104,16 +91,9 @@ class TermsOfServicePage extends StatelessWidget {
                   '• Prohibited actions include spamming, harassment, or unauthorized access.',
                   style: TextStyle(fontSize: 16, height: 1.5),
                 ),
-              ],
-            ),
-          ),
+                SizedBox(height: 16),
 
-          // Section 4
-          _buildCard(
-            width: cardWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+                // Section 4
                 Text(
                   '4. Changes to Terms',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
