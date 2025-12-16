@@ -18,10 +18,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase
-  await Firebase.initializeApp();
+  // await Firebase.initializeApp();
 
   // Set background message handler
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Initialize Supabase
   await SupabaseConfig.initialize();
@@ -33,7 +33,7 @@ void main() async {
   // Setup realtime listener jika user sudah login
   final currentSession = Supabase.instance.client.auth.currentSession;
   if (currentSession != null) {
-    print('✅ User already signed in, setting up realtime listener');
+    // print('✅ User already signed in, setting up realtime listener');
     FCMService().initialize();
     notificationService.setupRealtimeListener();
   }
@@ -51,7 +51,7 @@ void main() async {
 
       // Initialize FCM and realtime listener when user signs in
       if (event == AuthChangeEvent.signedIn) {
-        print('✅ User signed in via deep link');
+        // print('✅ User signed in via deep link');
         FCMService().initialize();
         notificationService.setupRealtimeListener();
       }

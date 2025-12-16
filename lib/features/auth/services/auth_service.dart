@@ -112,9 +112,9 @@ class AuthService {
       final profile = await getProfile(response.user!.id);
 
       // Initialize FCM in background (don't wait for it)
-      FCMService().initialize().catchError((e) {
-        print('⚠️ FCM initialization failed (non-blocking): $e');
-      });
+      // FCMService().initialize().catchError((e) {
+      //   print('⚠️ FCM initialization failed (non-blocking): $e');
+      // });
 
       return profile;
     } on AuthException catch (e) {
@@ -128,7 +128,7 @@ class AuthService {
   Future<void> signOut() async {
     try {
       // Delete FCM token before logout
-      await FCMService().deleteFCMToken();
+      // await FCMService().deleteFCMToken();
       
       await _supabase.auth.signOut();
     } catch (e) {
