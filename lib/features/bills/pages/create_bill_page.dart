@@ -1,0 +1,471 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:splitbillapp/core/config/supabase_config.dart';
+import 'package:splitbillapp/features/bills/models/models.dart';
+
+class CreateBillPage extends ConsumerStatefulWidget {
+  const CreateBillPage({super.key});
+
+  @override
+  ConsumerState<CreateBillPage> createState() => _CreateBillPageState();
+}
+
+class _CreateBillPageState extends ConsumerState<CreateBillPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _taxController = TextEditingController(text: '11');
+  final _serviceController = TextEditingController(text: '10');
+  
+  DateTime _selectedDate = DateTime.now();
+  List<String> _selectedParticipantIds = [];
+  Map<String, Profile> _allUsers = {};
+  bool _loadingUsers = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _taxController.dispose();
+    _serviceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final response = await SupabaseConfig.client
+          .from('profiles')
+          .select('id, email, full_name');
+
+      final users = <String, Profile>{};
+      for (final item in response as List) {
+        final profile = Profile.fromJson(item);
+        users[profile.id] = profile;
+      }
+
+      if (mounted) {
+        setState(() {
+          _allUsers = users;
+          _loadingUsers = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingUsers = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading users: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  Future<void> _selectParticipants() async {
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _ParticipantSelectorDialog(
+        allUsers: _allUsers,
+        selectedIds: _selectedParticipantIds,
+      ),
+    );
+    
+    if (result != null) {
+      setState(() {
+        _selectedParticipantIds = result;
+      });
+    }
+  }
+
+  Future<void> _proceedToAddItems() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_selectedParticipantIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one participant'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Navigate to add items page with bill data
+    final result = await context.push(
+      '/add-items',
+      extra: {
+        'billTitle': _titleController.text.trim(),
+        'billDate': _selectedDate,
+        'taxPercent': double.tryParse(_taxController.text) ?? 0,
+        'servicePercent': double.tryParse(_serviceController.text) ?? 0,
+        'participantIds': _selectedParticipantIds,
+      },
+    );
+
+    // If bill was created successfully, go back to home
+    if (result == true && mounted) {
+      context.go('/home');
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create New Bill'),
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Title Field
+            TextFormField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Bill Title',
+                hintText: 'e.g., Dinner at Restaurant',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.title),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter a title';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Date Picker
+            InkWell(
+              onTap: _selectDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Date',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_formatDate(_selectedDate)),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Tax Percent
+            TextFormField(
+              controller: _taxController,
+              decoration: const InputDecoration(
+                labelText: 'Tax Percentage',
+                hintText: '0',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.percent),
+                suffix: Text('%'),
+              ),
+              keyboardType: TextInputType.number,
+              onTap: () {
+                _taxController.clear();
+              },
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final num = double.tryParse(value);
+                  if (num == null || num < 0 || num > 100) {
+                    return 'Enter a valid percentage (0-100)';
+                  }
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Service Percent
+            TextFormField(
+              controller: _serviceController,
+              decoration: const InputDecoration(
+                labelText: 'Service Percentage',
+                hintText: '0',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.room_service),
+                suffix: Text('%'),
+              ),
+              keyboardType: TextInputType.number,
+              onTap: () {
+                _serviceController.clear();
+              },
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final num = double.tryParse(value);
+                  if (num == null || num < 0 || num > 100) {
+                    return 'Enter a valid percentage (0-100)';
+                  }
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Participants Selector
+            InkWell(
+              onTap: _loadingUsers ? null : _selectParticipants,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Participants',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.people),
+                ),
+                child: _loadingUsers
+                    ? const Text('Loading users...')
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _selectedParticipantIds.isEmpty
+                                ? Text(
+                                    'Select participants',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  )
+                                : Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: [
+                                      ..._selectedParticipantIds.take(3).map((id) {
+                                        final user = _allUsers[id];
+                                        final name = user?.fullName ?? user?.email?.split('@')[0] ?? 'User';
+                                        return Chip(
+                                          label: Text(
+                                            name,
+                                            style: const TextStyle(fontSize: 12),
+                                          ),
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        );
+                                      }),
+                                      if (_selectedParticipantIds.length > 3)
+                                        Chip(
+                                          label: Text(
+                                            '+${_selectedParticipantIds.length - 3}',
+                                            style: const TextStyle(fontSize: 12),
+                                          ),
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                    ],
+                                  ),
+                          ),
+                          const Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Continue Button
+            ElevatedButton.icon(
+              onPressed: _proceedToAddItems,
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Continue to Add Items'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.all(16),
+              ),
+            ),
+
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Participant Selector Dialog
+class _ParticipantSelectorDialog extends StatefulWidget {
+  final Map<String, Profile> allUsers;
+  final List<String> selectedIds;
+
+  const _ParticipantSelectorDialog({
+    required this.allUsers,
+    required this.selectedIds,
+  });
+
+  @override
+  State<_ParticipantSelectorDialog> createState() => _ParticipantSelectorDialogState();
+}
+
+class _ParticipantSelectorDialogState extends State<_ParticipantSelectorDialog> {
+  late List<String> _selectedIds;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = List.from(widget.selectedIds);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<MapEntry<String, Profile>> get _filteredUsers {
+    if (_searchQuery.isEmpty) {
+      return widget.allUsers.entries.toList();
+    }
+    return widget.allUsers.entries.where((entry) {
+      final name = entry.value.fullName?.toLowerCase() ?? '';
+      final email = entry.value.email?.toLowerCase() ?? '';
+      final query = _searchQuery.toLowerCase();
+      return name.contains(query) || email.contains(query);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Select Participants'),
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: Column(
+          children: [
+            // Search Bar
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by name or email...',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            
+            // Selected Count
+            if (_selectedIds.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${_selectedIds.length} participant${_selectedIds.length > 1 ? 's' : ''} selected',
+                  style: TextStyle(
+                    color: Colors.blue[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
+            // User List
+            Expanded(
+              child: _filteredUsers.isEmpty
+                  ? Center(
+                      child: Text(
+                        _searchQuery.isEmpty ? 'No users available' : 'No users found',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _filteredUsers.length,
+                      itemBuilder: (context, index) {
+                        final entry = _filteredUsers[index];
+                        final userId = entry.key;
+                        final user = entry.value;
+                        final isSelected = _selectedIds.contains(userId);
+                        final isCurrentUser = userId == SupabaseConfig.client.auth.currentUser?.id;
+                        final name = user.fullName ?? user.email?.split('@')[0] ?? 'Unknown';
+                        final displayName = isCurrentUser ? '$name (You)' : name;
+
+                        return CheckboxListTile(
+                          value: isSelected,
+                          onChanged: (checked) {
+                            setState(() {
+                              if (checked == true) {
+                                _selectedIds.add(userId);
+                              } else {
+                                _selectedIds.remove(userId);
+                              }
+                            });
+                          },
+                          title: Text(
+                            displayName,
+                            style: TextStyle(
+                              fontWeight: isCurrentUser ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                          subtitle: user.email != null ? Text(user.email!) : null,
+                          secondary: CircleAvatar(
+                            backgroundColor: isSelected ? Colors.blue : Colors.grey,
+                            child: Text(
+                              name[0].toUpperCase(),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _selectedIds.isEmpty
+              ? null
+              : () => Navigator.pop(context, _selectedIds),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
