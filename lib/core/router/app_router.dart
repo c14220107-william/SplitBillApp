@@ -12,6 +12,7 @@ import '../../features/profile/pages/profile_page.dart';
 import '../../features/notifications/pages/notifications_page.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/profile/pages/privacy_policy_page.dart';
+import '../../features/profile/pages/terms_of_service_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -96,6 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/privacy-policy',
         builder: (context, state) => const PrivacyPolicyPage(),
+      ),
+      GoRoute(
+        path: '/terms-of-service',
+        builder: (context, state) => const TermsOfServicePage(),
       ),
     ],
   );

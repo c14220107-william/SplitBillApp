@@ -39,7 +39,7 @@ class PrivacyPolicyPage extends StatelessWidget {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Last updated: January 2025',
+                'Last updated: December 2025',
                 style: TextStyle(
                   color: Colors.grey,
                   fontStyle: FontStyle.italic,

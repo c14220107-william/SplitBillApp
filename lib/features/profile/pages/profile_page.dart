@@ -420,6 +420,7 @@
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             // TODO: Navigate to terms
+                            context.push('/terms-of-service');
                           },
                         ),
                       ],
