@@ -9,18 +9,34 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/services/fcm_service.dart';
 import 'features/notifications/services/notification_service.dart';
+import 'package:go_router/go_router.dart';
+import 'features/bills/pages/bill_detail_page.dart';
 
 // Global navigator key untuk dialog yang perlu ditampilkan meskipun widget unmounted
 final globalNavigatorKey = GlobalKey<NavigatorState>();
+
+final GoRouter router = GoRouter(
+  navigatorKey: globalNavigatorKey,
+  routes: [
+    GoRoute(
+      path: '/bill/:id',
+      name: 'bill-detail',
+      builder: (context, state) {
+        final billId = state.pathParameters['id']!;
+        return BillDetailPage(billId: billId);
+      },
+    ),
+  ],
+);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize Firebase
-  await Firebase.initializeApp();
+  // await Firebase.initializeApp();
   
   // Set background message handler
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   
   // Initialize Supabase
   await SupabaseConfig.initialize();
@@ -33,7 +49,7 @@ void main() async {
   final currentSession = Supabase.instance.client.auth.currentSession;
   if (currentSession != null) {
     print('✅ User already signed in, setting up realtime listener');
-    FCMService().initialize();
+    // FCMService().initialize();
     notificationService.setupRealtimeListener();
   }
   
@@ -51,7 +67,7 @@ void main() async {
       // Initialize FCM and realtime listener when user signs in
       if (event == AuthChangeEvent.signedIn) {
         print('✅ User signed in via deep link');
-        FCMService().initialize();
+        // FCMService().initialize();
         notificationService.setupRealtimeListener();
       }
     } else {

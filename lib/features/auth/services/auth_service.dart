@@ -35,6 +35,12 @@ class AuthService {
         throw Exception('Registrasi gagal. Silakan coba lagi.');
       }
 
+      // Check if user was actually created (not just returned existing user)
+      if (response.session == null) {
+        // User already exists, Supabase returns user but no session
+        throw Exception('Email sudah terdaftar. Gunakan email lain atau login.');
+      }
+
       // Profile akan otomatis dibuat oleh trigger di database
       // Tunggu sebentar untuk trigger selesai
       await Future.delayed(const Duration(seconds: 2));
@@ -106,9 +112,9 @@ class AuthService {
       final profile = await getProfile(response.user!.id);
 
       // Initialize FCM in background (don't wait for it)
-      FCMService().initialize().catchError((e) {
-        print('⚠️ FCM initialization failed (non-blocking): $e');
-      });
+      // FCMService().initialize().catchError((e) {
+      //   print('⚠️ FCM initialization failed (non-blocking): $e');
+      // });
 
       return profile;
     } on AuthException catch (e) {
@@ -122,7 +128,7 @@ class AuthService {
   Future<void> signOut() async {
     try {
       // Delete FCM token before logout
-      await FCMService().deleteFCMToken();
+      // await FCMService().deleteFCMToken();
       
       await _supabase.auth.signOut();
     } catch (e) {

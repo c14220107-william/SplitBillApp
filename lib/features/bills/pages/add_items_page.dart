@@ -10,7 +10,7 @@ class TempBillItem {
   final String name;
   final int quantity;
   final double price;
-  final Map<String, int> userQuantities; // userId -> quantity per user
+  final Map<String, double> userQuantities; // userId -> quantity per user
 
   TempBillItem({
     required this.id,
@@ -24,10 +24,10 @@ class TempBillItem {
   double get pricePerItem => price;
   
   List<String> get assignedUserIds => userQuantities.keys.toList();
-  int get totalAssignedQuantity => userQuantities.values.fold(0, (sum, qty) => sum + qty);
+  double get totalAssignedQuantity => userQuantities.values.fold(0.0, (sum, qty) => sum + qty);
   
   double getUserTotal(String userId) {
-    final userQty = userQuantities[userId] ?? 0;
+    final userQty = userQuantities[userId] ?? 0.0;
     return userQty * price;
   }
 }
@@ -58,6 +58,13 @@ class AddItemsPage extends ConsumerStatefulWidget {
 class _AddItemsPageState extends ConsumerState<AddItemsPage> {
   bool _isLoading = false;
   Map<String, Profile> _profiles = {};
+
+String buildQtyLabel(double userQty) {
+  if (userQty % 1 == 0) {
+    return '${userQty.toInt()}x';
+  }
+  return 'Split';
+}
 
   @override
   void initState() {
@@ -166,7 +173,7 @@ class _AddItemsPageState extends ConsumerState<AddItemsPage> {
     }
     
     // Check quantity matches
-    final mismatchedItems = items.where((i) => i.totalAssignedQuantity != i.quantity).toList();
+    final mismatchedItems = items.where((i) => (i.totalAssignedQuantity - i.quantity).abs() > 0.01).toList();
     if (mismatchedItems.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -416,13 +423,14 @@ class _AddItemsPageState extends ConsumerState<AddItemsPage> {
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
-                                            '${userQty}x',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.blue[700],
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
+  buildQtyLabel(userQty),
+  style: TextStyle(
+    fontSize: 12,
+    color: Colors.blue[700],
+    fontWeight: FontWeight.w600,
+  ),
+),
+
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
@@ -540,7 +548,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   late final TextEditingController _quantityController;
   late final TextEditingController _priceController;
   late Map<String, TextEditingController> _userQuantityControllers;
-  late Map<String, int> _userQuantities;
+  late Map<String, double> _userQuantities;
 
   @override
   void initState() {
@@ -550,7 +558,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     _priceController = TextEditingController(text: widget.initialItem?.price.toString() ?? '');
     
     // Initialize user quantity controllers
-    _userQuantities = Map.from(widget.initialItem?.userQuantities ?? {});
+    _userQuantities = (widget.initialItem?.userQuantities ?? {}).map(
+      (key, value) => MapEntry(key, value.toDouble()),
+    );
     _userQuantityControllers = {};
     for (var userId in widget.participantIds) {
       _userQuantityControllers[userId] = TextEditingController(
@@ -579,16 +589,35 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       return;
     }
     
-    final userCount = widget.participantIds.length;
-    final qtyPerUser = totalQty ~/ userCount;
-    final remainder = totalQty % userCount;
+    // Get users who have quantity > 0 (assigned users)
+    final assignedUsers = _userQuantities.entries
+        .where((entry) => entry.value > 0)
+        .map((entry) => entry.key)
+        .toList();
+    
+    // If no users assigned, distribute to all participants
+    final usersToDistribute = assignedUsers.isNotEmpty ? assignedUsers : widget.participantIds;
+    final userCount = usersToDistribute.length;
+    
+    if (userCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No participants to distribute to')),
+      );
+      return;
+    }
+    
+    final qtyPerUser = totalQty / userCount;
     
     setState(() {
-      for (int i = 0; i < widget.participantIds.length; i++) {
-        final userId = widget.participantIds[i];
-        final qty = qtyPerUser + (i < remainder ? 1 : 0);
-        _userQuantityControllers[userId]!.text = qty.toString();
-        _userQuantities[userId] = qty;
+      // Reset all to 0 first
+      for (var userId in widget.participantIds) {
+        _userQuantityControllers[userId]!.text = '0';
+        _userQuantities[userId] = 0.0;
+      }
+      // Set quantity for assigned users
+      for (var userId in usersToDistribute) {
+        _userQuantityControllers[userId]!.text = qtyPerUser.toStringAsFixed(2);
+        _userQuantities[userId] = qtyPerUser;
       }
     });
   }
@@ -597,13 +626,13 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     setState(() {
       for (var userId in widget.participantIds) {
         _userQuantityControllers[userId]!.text = '0';
-        _userQuantities[userId] = 0;
+        _userQuantities[userId] = 1.0;
       }
     });
   }
 
-  int _getTotalAssigned() {
-    return _userQuantities.values.fold(0, (sum, qty) => sum + qty);
+  double _getTotalAssigned() {
+    return _userQuantities.values.fold(0.0, (sum, qty) => sum + qty);
   }
 
   @override
@@ -647,6 +676,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         ),
                         keyboardType: TextInputType.number,
+                        onTap: () {
+                          _quantityController.clear();
+                        },
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Required';
@@ -694,10 +726,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                         children: [
                           const Text('Quantity per person:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           Text(
-                            'Assigned: ${_getTotalAssigned()} / ${_quantityController.text}',
+                            'Assigned: ${_getTotalAssigned().toStringAsFixed(2)} / ${_quantityController.text}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: _getTotalAssigned() == (int.tryParse(_quantityController.text) ?? 0)
+                              color: (_getTotalAssigned() - (int.tryParse(_quantityController.text) ?? 0)).abs() < 0.01
                                   ? Colors.green
                                   : Colors.orange,
                             ),
@@ -761,13 +793,16 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                             ),
                             keyboardType: TextInputType.number,
                             textAlign: TextAlign.center,
+                            onTap: () {
+                              _userQuantityControllers[userId]!.clear();
+                            },
                             onChanged: (value) {
                               setState(() {
-                                _userQuantities[userId] = int.tryParse(value) ?? 0;
+                                _userQuantities[userId] = double.tryParse(value) ?? 0.0;
                               });
                             },
                             validator: (value) {
-                              final qty = int.tryParse(value ?? '');
+                              final qty = double.tryParse(value ?? '');
                               if (qty == null || qty < 0) {
                                 return 'Invalid';
                               }
@@ -793,7 +828,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               // Filter out users with 0 quantity
-              final userQuantities = Map<String, int>.from(_userQuantities);
+              final userQuantities = Map<String, double>.from(_userQuantities);
               userQuantities.removeWhere((key, value) => value == 0);
               
               Navigator.pop(context, {

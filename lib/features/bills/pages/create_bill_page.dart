@@ -14,8 +14,8 @@ class CreateBillPage extends ConsumerStatefulWidget {
 class _CreateBillPageState extends ConsumerState<CreateBillPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  final _taxController = TextEditingController(text: '0');
-  final _serviceController = TextEditingController(text: '0');
+  final _taxController = TextEditingController(text: '11');
+  final _serviceController = TextEditingController(text: '10');
   
   DateTime _selectedDate = DateTime.now();
   List<String> _selectedParticipantIds = [];
@@ -194,6 +194,9 @@ class _CreateBillPageState extends ConsumerState<CreateBillPage> {
                 suffix: Text('%'),
               ),
               keyboardType: TextInputType.number,
+              onTap: () {
+                _taxController.clear();
+              },
               validator: (value) {
                 if (value != null && value.isNotEmpty) {
                   final num = double.tryParse(value);
@@ -217,6 +220,9 @@ class _CreateBillPageState extends ConsumerState<CreateBillPage> {
                 suffix: Text('%'),
               ),
               keyboardType: TextInputType.number,
+              onTap: () {
+                _serviceController.clear();
+              },
               validator: (value) {
                 if (value != null && value.isNotEmpty) {
                   final num = double.tryParse(value);

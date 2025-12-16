@@ -52,7 +52,7 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
         if (mounted) {
           // Refresh data
           ref.invalidate(billDetailProvider(widget.billId));
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Bill finalized successfully!'),
@@ -77,6 +77,129 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
     }
   }
 
+  Future<void> _editBill(Bill bill) async {
+    final titleController = TextEditingController(text: bill.title);
+    final taxController = TextEditingController(
+      text: bill.taxPercent.toString(),
+    );
+    final serviceController = TextEditingController(
+      text: bill.servicePercent.toString(),
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Bill Details'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: 'Bill Title'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: taxController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Tax (%)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: serviceController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Service (%)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        await SupabaseConfig.client
+            .from('bills')
+            .update({
+              'title': titleController.text.trim(),
+              'tax_percent': double.parse(taxController.text),
+              'service_percent': double.parse(serviceController.text),
+            })
+            .eq('id', bill.id);
+
+        ref.invalidate(billDetailProvider(bill.id));
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bill updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update bill: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteBill(String billId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Bill'),
+        content: const Text('Are you sure you want to delete this bill?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await SupabaseConfig.client.from('bills').delete().eq('id', billId);
+
+        if (mounted) {
+          Navigator.pop(context); // balik ke list bill
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bill deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete bill: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final billAsync = ref.watch(billDetailProvider(widget.billId));
@@ -87,14 +210,47 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
       appBar: AppBar(
         title: const Text('Bill Details'),
         actions: [
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // TODO: Show menu (edit, delete, finalize)
+            onSelected: (value) async {
+              final bill = billAsync.value;
+              if (bill == null) return;
+
+              if (value == 'edit') {
+                await _editBill(bill);
+              }
+
+              if (value == 'delete') {
+                await _deleteBill(bill.id);
+              }
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit, size: 18),
+                    SizedBox(width: 8),
+                    Text('Edit Bill'),
+                  ],
+                ),
+              ),
+
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete Bill'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
+
       body: billAsync.when(
         data: (bill) => RefreshIndicator(
           onRefresh: () async {
@@ -130,7 +286,11 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             _formatDate(bill.date),
@@ -156,9 +316,7 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
                     return const Card(
                       child: Padding(
                         padding: EdgeInsets.all(32),
-                        child: Center(
-                          child: Text('No items added yet'),
-                        ),
+                        child: Center(child: Text('No items added yet')),
                       ),
                     );
                   }
@@ -173,13 +331,15 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
 
                   return Column(
                     children: [
-                      ...items.map((item) => _ItemCard(
-                        item: item,
-                        billId: widget.billId,
-                        billStatus: bill.status,
-                      )),
+                      ...items.map(
+                        (item) => _ItemCard(
+                          item: item,
+                          billId: widget.billId,
+                          billStatus: bill.status,
+                        ),
+                      ),
                       const SizedBox(height: 16),
-                      
+
                       // Total Summary
                       Card(
                         color: Colors.blue.shade50,
@@ -191,7 +351,10 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
                               if (bill.taxPercent > 0)
                                 _SummaryRow('Tax (${bill.taxPercent}%)', tax),
                               if (bill.servicePercent > 0)
-                                _SummaryRow('Service (${bill.servicePercent}%)', service),
+                                _SummaryRow(
+                                  'Service (${bill.servicePercent}%)',
+                                  service,
+                                ),
                               const Divider(height: 24),
                               _SummaryRow('Total', total, isBold: true),
                             ],
@@ -224,15 +387,15 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
                     return const Card(
                       child: Padding(
                         padding: EdgeInsets.all(32),
-                        child: Center(
-                          child: Text('No participants'),
-                        ),
+                        child: Center(child: Text('No participants')),
                       ),
                     );
                   }
 
                   return Column(
-                    children: members.map((member) => _MemberCard(member: member)).toList(),
+                    children: members
+                        .map((member) => _MemberCard(member: member))
+                        .toList(),
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -247,17 +410,21 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
               const SizedBox(height: 24),
 
               // Finalize Button (only for creator when status is DRAFT)
-              if (bill.createdBy == ref.read(billServiceProvider).currentUserId && 
+              if (bill.createdBy ==
+                      ref.read(billServiceProvider).currentUserId &&
                   bill.status == BillStatus.draft)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _isLoading ? null : () => _finalizeBill(bill),
-                    icon: _isLoading 
+                    icon: _isLoading
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.check_circle),
                     label: Text(_isLoading ? 'Finalizing...' : 'Finalize Bill'),
@@ -286,7 +453,20 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }
@@ -362,7 +542,8 @@ class _ItemCard extends ConsumerWidget {
     // Build user quantities map from assignments
     final userQuantities = <String, int>{};
     for (final assignment in assignments) {
-      userQuantities[assignment.userId] = (userQuantities[assignment.userId] ?? 0) + assignment.quantity;
+      userQuantities[assignment.userId] =
+          (userQuantities[assignment.userId] ?? 0) + assignment.quantity;
     }
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -377,7 +558,7 @@ class _ItemCard extends ConsumerWidget {
     if (result != null && context.mounted) {
       try {
         final billService = ref.read(billServiceProvider);
-        
+
         // Update item
         await billService.updateBillItem(
           itemId: item.id,
@@ -388,7 +569,7 @@ class _ItemCard extends ConsumerWidget {
 
         // Update assignments - delete old and insert new
         final newUserQuantities = result['userQuantities'] as Map<String, int>;
-        
+
         // Delete old assignments
         await SupabaseConfig.client
             .from('item_assignments')
@@ -398,11 +579,13 @@ class _ItemCard extends ConsumerWidget {
         // Insert new assignments
         final assignmentsData = newUserQuantities.entries
             .where((entry) => entry.value > 0)
-            .map((entry) => {
-                  'item_id': item.id,
-                  'user_id': entry.key,
-                  'quantity': entry.value,
-                })
+            .map(
+              (entry) => {
+                'item_id': item.id,
+                'user_id': entry.key,
+                'quantity': entry.value,
+              },
+            )
             .toList();
 
         if (assignmentsData.isNotEmpty) {
@@ -413,7 +596,7 @@ class _ItemCard extends ConsumerWidget {
 
         ref.invalidate(billItemsProvider(billId));
         ref.invalidate(itemAssignmentsProvider(item.id));
-        
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -461,7 +644,7 @@ class _ItemCard extends ConsumerWidget {
         await billService.deleteBillItem(item.id);
 
         ref.invalidate(billItemsProvider(billId));
-        
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -527,7 +710,11 @@ class _ItemCard extends ConsumerWidget {
                         tooltip: 'Edit item',
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                        icon: const Icon(
+                          Icons.delete,
+                          size: 18,
+                          color: Colors.red,
+                        ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         onPressed: () => _deleteItem(context, ref),
@@ -553,7 +740,8 @@ class _ItemCard extends ConsumerWidget {
                 final userMap = <String, Map<String, dynamic>>{};
                 for (final assignment in assignments) {
                   if (userMap.containsKey(assignment.userId)) {
-                    userMap[assignment.userId]!['quantity'] += assignment.quantity;
+                    userMap[assignment.userId]!['quantity'] +=
+                        assignment.quantity;
                   } else {
                     userMap[assignment.userId] = {
                       'quantity': assignment.quantity,
@@ -578,11 +766,12 @@ class _ItemCard extends ConsumerWidget {
                     ...userMap.entries.map((entry) {
                       final userQty = entry.value['quantity'] as int;
                       final profile = entry.value['profile'] as Profile?;
-                      final name = profile?.fullName ??
+                      final name =
+                          profile?.fullName ??
                           profile?.email?.split('@')[0] ??
                           'User';
                       final userCost = item.price * userQty;
-                      
+
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
@@ -596,7 +785,10 @@ class _ItemCard extends ConsumerWidget {
                               child: profile?.avatarUrl == null
                                   ? Text(
                                       name[0].toUpperCase(),
-                                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                      ),
                                     )
                                   : null,
                             ),
@@ -608,13 +800,16 @@ class _ItemCard extends ConsumerWidget {
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.blue.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                '${userQty}x',
+                                'Split',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.blue[700],
@@ -685,10 +880,9 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
       );
 
       // Update bill member with proof URL
-      await ref.read(billServiceProvider).confirmPayment(
-            billId: billId,
-            proofUrl: proofUrl,
-          );
+      await ref
+          .read(billServiceProvider)
+          .confirmPayment(billId: billId, proofUrl: proofUrl);
 
       if (mounted) {
         // Refresh data
@@ -719,8 +913,6 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
 
   void _viewPaymentProof(String? proofUrl) {
     if (proofUrl == null) return;
-
-    print('🖼️ Opening payment proof URL: $proofUrl');
 
     showDialog(
       context: context,
@@ -754,21 +946,18 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
                     );
                   },
                   errorBuilder: (context, error, stackTrace) {
-                    print('❌ Failed to load image: $error');
-                    return Padding(
-                      padding: const EdgeInsets.all(32),
+                    return const Padding(
+                      padding: EdgeInsets.all(32),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                          const SizedBox(height: 8),
-                          const Text('Failed to load image'),
-                          const SizedBox(height: 4),
-                          Text(
-                            error.toString(),
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
-                            textAlign: TextAlign.center,
+                          Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red,
                           ),
+                          SizedBox(height: 8),
+                          Text('Failed to load image'),
                         ],
                       ),
                     );
@@ -784,7 +973,8 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.member.userProfile?.fullName ??
+    final name =
+        widget.member.userProfile?.fullName ??
         widget.member.userProfile?.email?.split('@')[0] ??
         'Unknown User';
 
@@ -864,7 +1054,10 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
                     ),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
@@ -884,12 +1077,15 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
             ),
 
             // Show confirm payment button for current user if unpaid
-            if (isCurrentUser && widget.member.status == PaymentStatus.unpaid) ...[
+            if (isCurrentUser &&
+                widget.member.status == PaymentStatus.unpaid) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _isLoading ? null : () => _confirmPayment(widget.member.billId),
+                  onPressed: _isLoading
+                      ? null
+                      : () => _confirmPayment(widget.member.billId),
                   icon: _isLoading
                       ? const SizedBox(
                           width: 16,
@@ -910,7 +1106,8 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
             ],
 
             // Show view proof button if proof exists
-            if (widget.member.proofUrl != null && widget.member.proofUrl!.isNotEmpty) ...[
+            if (widget.member.proofUrl != null &&
+                widget.member.proofUrl!.isNotEmpty) ...[
               const SizedBox(height: 8),
               TextButton.icon(
                 onPressed: () => _viewPaymentProof(widget.member.proofUrl),
@@ -993,9 +1190,13 @@ class _EditItemDialogState extends State<_EditItemDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.item.name);
-    _quantityController = TextEditingController(text: widget.item.quantity.toString());
-    _priceController = TextEditingController(text: widget.item.price.toStringAsFixed(0));
-    
+    _quantityController = TextEditingController(
+      text: widget.item.quantity.toString(),
+    );
+    _priceController = TextEditingController(
+      text: widget.item.price.toStringAsFixed(0),
+    );
+
     _userQuantities = Map.from(widget.userQuantities);
     _userQuantityControllers = {};
     for (var userId in widget.participantIds) {
@@ -1013,8 +1214,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
           .from('profiles')
           .select()
           .inFilter('id', widget.participantIds);
-      
-      final profiles = (response as List).map((json) => Profile.fromJson(json)).toList();
+
+      final profiles = (response as List)
+          .map((json) => Profile.fromJson(json))
+          .toList();
       if (mounted) {
         setState(() {
           _profiles = {for (var p in profiles) p.id: p};
@@ -1040,15 +1243,17 @@ class _EditItemDialogState extends State<_EditItemDialog> {
     final totalQty = int.tryParse(_quantityController.text) ?? 0;
     if (totalQty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter valid total quantity first')),
+        const SnackBar(
+          content: Text('Please enter valid total quantity first'),
+        ),
       );
       return;
     }
-    
+
     final userCount = widget.participantIds.length;
     final qtyPerUser = totalQty ~/ userCount;
     final remainder = totalQty % userCount;
-    
+
     setState(() {
       for (int i = 0; i < widget.participantIds.length; i++) {
         final userId = widget.participantIds[i];
@@ -1092,7 +1297,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                     labelText: 'Item Name',
                     hintText: 'e.g., Nasi Goreng',
                     border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -1110,7 +1318,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                         decoration: const InputDecoration(
                           labelText: 'Quantity',
                           border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
                         ),
                         keyboardType: TextInputType.number,
                         validator: (value) {
@@ -1133,7 +1344,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                           labelText: 'Price',
                           border: OutlineInputBorder(),
                           prefixText: 'Rp ',
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
                         ),
                         keyboardType: TextInputType.number,
                         validator: (value) {
@@ -1158,12 +1372,21 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Quantity per person:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          const Text(
+                            'Quantity per person:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
                           Text(
                             'Assigned: ${_getTotalAssigned()} / ${_quantityController.text}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: _getTotalAssigned() == (int.tryParse(_quantityController.text) ?? 0)
+                              color:
+                                  _getTotalAssigned() ==
+                                      (int.tryParse(_quantityController.text) ??
+                                          0)
                                   ? Colors.green
                                   : Colors.orange,
                             ),
@@ -1176,7 +1399,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                         TextButton.icon(
                           onPressed: _distributeEqually,
                           icon: const Icon(Icons.people, size: 16),
-                          label: const Text('Split', style: TextStyle(fontSize: 12)),
+                          label: const Text(
+                            'Split',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             minimumSize: const Size(0, 32),
@@ -1185,7 +1411,10 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                         TextButton.icon(
                           onPressed: _clearAll,
                           icon: const Icon(Icons.clear, size: 16),
-                          label: const Text('Clear', style: TextStyle(fontSize: 12)),
+                          label: const Text(
+                            'Clear',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             minimumSize: const Size(0, 32),
@@ -1198,8 +1427,11 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                 const SizedBox(height: 8),
                 ...widget.participantIds.map((userId) {
                   final profile = _profiles[userId];
-                  final name = profile?.fullName ?? profile?.email?.split('@')[0] ?? 'User';
-                  
+                  final name =
+                      profile?.fullName ??
+                      profile?.email?.split('@')[0] ??
+                      'User';
+
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
@@ -1213,20 +1445,29 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                           child: profile?.avatarUrl == null
                               ? Text(
                                   name[0].toUpperCase(),
-                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
                                 )
                               : null,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text(name, style: const TextStyle(fontSize: 14)),
+                          child: Text(
+                            name,
+                            style: const TextStyle(fontSize: 14),
+                          ),
                         ),
                         SizedBox(
                           width: 80,
                           child: TextFormField(
                             controller: _userQuantityControllers[userId],
                             decoration: const InputDecoration(
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               border: OutlineInputBorder(),
                               isDense: true,
                             ),
@@ -1234,7 +1475,8 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                             textAlign: TextAlign.center,
                             onChanged: (value) {
                               setState(() {
-                                _userQuantities[userId] = int.tryParse(value) ?? 0;
+                                _userQuantities[userId] =
+                                    int.tryParse(value) ?? 0;
                               });
                             },
                           ),
@@ -1258,11 +1500,13 @@ class _EditItemDialogState extends State<_EditItemDialog> {
             if (_formKey.currentState!.validate()) {
               final totalQty = int.parse(_quantityController.text);
               final assignedQty = _getTotalAssigned();
-              
+
               if (assignedQty != totalQty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Total assigned ($assignedQty) must equal total quantity ($totalQty)'),
+                    content: Text(
+                      'Total assigned ($assignedQty) must equal total quantity ($totalQty)',
+                    ),
                     backgroundColor: Colors.orange,
                   ),
                 );

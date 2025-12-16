@@ -3,7 +3,7 @@ class BillItem {
   final String billId;
   final String name;
   final double price;
-  final int quantity;
+  final double quantity;
   final DateTime createdAt;
   final DateTime updatedAt;
   
@@ -15,7 +15,7 @@ class BillItem {
     required this.billId,
     required this.name,
     required this.price,
-    this.quantity = 1,
+    this.quantity = 1.0,
     required this.createdAt,
     required this.updatedAt,
     this.assignedUserIds,
@@ -27,7 +27,7 @@ class BillItem {
       billId: json['bill_id'] as String,
       name: json['name'] as String,
       price: (json['price'] as num).toDouble(),
-      quantity: json['quantity'] as int? ?? 1,
+      quantity: (json['quantity'] as num).toDouble(),
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
@@ -64,7 +64,7 @@ class BillItem {
     String? billId,
     String? name,
     double? price,
-    int? quantity,
+    double? quantity,
     DateTime? createdAt,
     DateTime? updatedAt,
     List<String>? assignedUserIds,
