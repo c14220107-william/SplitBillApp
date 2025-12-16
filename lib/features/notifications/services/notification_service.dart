@@ -2,26 +2,63 @@ import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:splitbillapp/core/config/supabase_config.dart';
-import 'package:splitbillapp/features/notifications/models/notification.dart';
+import 'package:splitbillapp/features/notifications/models/notification.dart'
+    as app_notification;
+import 'package:go_router/go_router.dart';
+import 'package:flutter/material.dart';
+import 'package:splitbillapp/main.dart';
 
 class NotificationService {
   final _supabase = SupabaseConfig.client;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
   /// Initialize local notifications
   Future<void> initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const initSettings = InitializationSettings(android: androidSettings);
-    
+
     await _localNotifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Handle notification tap
+      onDidReceiveNotificationResponse: (NotificationResponse response) async {
         print('📱 Notification tapped: ${response.payload}');
+
+        if (response.payload == null) return;
+
+        try {
+          final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+          final relatedId = data['related_id'];
+          final type = data['type'];
+
+          if (relatedId == null) return;
+
+          if (type == 'bill_invite' || type == 'bill_finalized') {
+            _navigateToBill(relatedId);
+          }
+        } catch (e) {
+          print('❌ Error parsing notification payload: $e');
+        }
       },
     );
+  }
+
+  void _navigateToBill(String billId) {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final navigator = globalNavigatorKey.currentState;
+
+      if (navigator == null) {
+        print('❌ Navigator not ready');
+        return;
+      }
+
+      navigator.pushNamed('bill-detail', arguments: billId);
+
+      print('➡️ Navigated to bill: $billId');
+    });
   }
 
   /// Setup realtime listener for new notifications
@@ -42,7 +79,7 @@ class NotificationService {
           table: 'notifications',
           callback: (payload) {
             print('🔔 Realtime payload received: ${payload.newRecord}');
-            
+
             // Check if notification is for current user
             if (payload.newRecord['user_id'] == currentUserId) {
               print('✅ Notification for current user!');
@@ -63,7 +100,7 @@ class NotificationService {
   /// Show local notification
   Future<void> _showLocalNotification(Map<String, dynamic> notification) async {
     print('📱 Showing local notification: ${notification['title']}');
-    
+
     const androidDetails = AndroidNotificationDetails(
       'high_importance_channel',
       'High Importance Notifications',
@@ -91,10 +128,12 @@ class NotificationService {
   }
 
   /// Get all notifications for current user
-  Future<List<Notification>> getNotifications({int limit = 50}) async {
+  Future<List<app_notification.Notification>> getNotifications({
+    int limit = 50,
+  }) async {
     try {
       print('DEBUG: Fetching notifications for user: $currentUserId');
-      
+
       final response = await _supabase
           .from('notifications')
           .select()
@@ -103,9 +142,9 @@ class NotificationService {
           .limit(limit);
 
       print('DEBUG: Notifications response: ${response.length} items');
-      
+
       return (response as List)
-          .map((json) => Notification.fromJson(json))
+          .map((json) => app_notification.Notification.fromJson(json))
           .toList();
     } catch (e) {
       print('DEBUG: Error fetching notifications: $e');
@@ -117,7 +156,7 @@ class NotificationService {
   Future<int> getUnreadCount() async {
     try {
       print('DEBUG: Fetching unread count for user: $currentUserId');
-      
+
       final response = await _supabase
           .from('notifications')
           .select()
@@ -126,7 +165,7 @@ class NotificationService {
 
       final count = (response as List).length;
       print('DEBUG: Unread count: $count');
-      
+
       return count;
     } catch (e) {
       print('DEBUG: Error fetching unread count: $e');
@@ -139,7 +178,10 @@ class NotificationService {
     try {
       await _supabase
           .from('notifications')
-          .update({'is_read': true, 'updated_at': DateTime.now().toIso8601String()})
+          .update({
+            'is_read': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
           .eq('id', notificationId);
     } catch (e) {
       throw Exception('Failed to mark as read: $e');
@@ -151,10 +193,47 @@ class NotificationService {
     try {
       await _supabase
           .from('notifications')
-          .update({'is_read': true, 'updated_at': DateTime.now().toIso8601String()})
+          .update({
+            'is_read': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
           .eq('user_id', currentUserId!);
     } catch (e) {
       throw Exception('Failed to mark all as read: $e');
+    }
+  }
+
+  /// Send notification to users when invited to a bill
+  Future<void> sendBillInviteNotification({
+    required String billId,
+    required String billTitle,
+    required String inviterName,
+    required List<String> userIds,
+  }) async {
+    try {
+      // 1. Create notifications in database
+      final notifications = userIds
+          .map(
+            (userId) => {
+              'user_id': userId,
+              'title': 'Bill Invitation',
+              'message':
+                  '$inviterName invited you to split the bill "$billTitle".',
+              'type': 'bill_invite',
+              'related_id': billId,
+              'is_read': false,
+            },
+          )
+          .toList();
+
+      await _supabase.from('notifications').insert(notifications);
+      print(
+        '✅ Invite notifications inserted to DB for ${userIds.length} users',
+      );
+      print('📡 Push notifications will be delivered via Supabase Realtime');
+    } catch (e) {
+      print('❌ Error sending invite notifications: $e');
+      throw Exception('Failed to send invite notifications: $e');
     }
   }
 
@@ -166,14 +245,19 @@ class NotificationService {
   }) async {
     try {
       // 1. Create notifications in database
-      final notifications = userIds.map((userId) => {
-        'user_id': userId,
-        'title': 'Bill Finalized',
-        'message': 'The bill "$billTitle" has been finalized. Please proceed with payment.',
-        'type': 'bill_finalized',
-        'related_id': billId,
-        'is_read': false,
-      }).toList();
+      final notifications = userIds
+          .map(
+            (userId) => {
+              'user_id': userId,
+              'title': 'Bill Finalized',
+              'message':
+                  'The bill "$billTitle" has been finalized. Please proceed with payment.',
+              'type': 'bill_finalized',
+              'related_id': billId,
+              'is_read': false,
+            },
+          )
+          .toList();
 
       await _supabase.from('notifications').insert(notifications);
       print('✅ Notifications inserted to DB for ${userIds.length} users');
@@ -184,13 +268,9 @@ class NotificationService {
     }
   }
 
-  /// Delete notification
   Future<void> deleteNotification(String notificationId) async {
     try {
-      await _supabase
-          .from('notifications')
-          .delete()
-          .eq('id', notificationId);
+      await _supabase.from('notifications').delete().eq('id', notificationId);
     } catch (e) {
       throw Exception('Failed to delete notification: $e');
     }

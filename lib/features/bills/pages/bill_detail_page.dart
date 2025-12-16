@@ -200,6 +200,92 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
     }
   }
 
+  Future<void> _addItem(Bill bill) async {
+    // Get bill members to know participants
+    final membersAsync = ref.read(billMembersProvider(bill.id));
+    final members = membersAsync.when(
+      data: (data) => data,
+      loading: () => <BillMember>[],
+      error: (_, __) => <BillMember>[],
+    );
+
+    if (members.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No participants found. Please add members first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final participantIds = members.map((m) => m.userId).toList();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _AddItemDialog(
+        participantIds: participantIds,
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        final billService = ref.read(billServiceProvider);
+
+        // Create new item
+        final newItem = await billService.createBillItem(
+          billId: bill.id,
+          name: result['name'],
+          price: result['price'],
+          quantity: result['quantity'],
+        );
+
+        // Insert assignments
+        final userQuantities = result['userQuantities'] as Map<String, int>;
+        final assignmentsData = userQuantities.entries
+            .where((entry) => entry.value > 0)
+            .map(
+              (entry) => {
+                'item_id': newItem.id,
+                'user_id': entry.key,
+                'quantity': entry.value,
+              },
+            )
+            .toList();
+
+        if (assignmentsData.isNotEmpty) {
+          await SupabaseConfig.client
+              .from('item_assignments')
+              .insert(assignmentsData);
+        }
+
+        // Recalculate all member totals after adding item
+        await billService.recalculateBillMemberTotals(bill.id);
+
+        ref.invalidate(billItemsProvider(bill.id));
+        ref.invalidate(billMembersProvider(bill.id));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item added successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to add item: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final billAsync = ref.watch(billDetailProvider(widget.billId));
@@ -250,6 +336,18 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
           ),
         ],
       ),
+
+      // Add FAB for adding items when bill is DRAFT and user is host
+      floatingActionButton: billAsync.value != null &&
+              billAsync.value!.status == BillStatus.draft &&
+              billAsync.value!.createdBy ==
+                  SupabaseConfig.client.auth.currentUser?.id
+          ? FloatingActionButton.extended(
+              onPressed: () => _addItem(billAsync.value!),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Item'),
+            )
+          : null,
 
       body: billAsync.when(
         data: (bill) => RefreshIndicator(
@@ -336,6 +434,8 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
                           item: item,
                           billId: widget.billId,
                           billStatus: bill.status,
+                          isHost: bill.createdBy ==
+                              SupabaseConfig.client.auth.currentUser?.id,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -513,11 +613,13 @@ class _ItemCard extends ConsumerWidget {
   final BillItem item;
   final String billId;
   final BillStatus billStatus;
+  final bool isHost;
 
   const _ItemCard({
     required this.item,
     required this.billId,
     required this.billStatus,
+    required this.isHost,
   });
 
   Future<void> _editItem(BuildContext context, WidgetRef ref) async {
@@ -594,8 +696,12 @@ class _ItemCard extends ConsumerWidget {
               .insert(assignmentsData);
         }
 
+        // Recalculate all member totals after updating item
+        await billService.recalculateBillMemberTotals(billId);
+
         ref.invalidate(billItemsProvider(billId));
         ref.invalidate(itemAssignmentsProvider(item.id));
+        ref.invalidate(billMembersProvider(billId)); // Refresh members to show new totals
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -643,7 +749,11 @@ class _ItemCard extends ConsumerWidget {
         final billService = ref.read(billServiceProvider);
         await billService.deleteBillItem(item.id);
 
+        // Recalculate all member totals after deleting item
+        await billService.recalculateBillMemberTotals(billId);
+
         ref.invalidate(billItemsProvider(billId));
+        ref.invalidate(billMembersProvider(billId)); // Refresh members to show new totals
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -699,8 +809,8 @@ class _ItemCard extends ConsumerWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    // Edit & Delete buttons (only for DRAFT status)
-                    if (billStatus == BillStatus.draft) ...[
+                    // Edit & Delete buttons (only for DRAFT status and host)
+                    if (billStatus == BillStatus.draft && isHost) ...[
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.edit, size: 18),
@@ -1522,6 +1632,331 @@ class _EditItemDialogState extends State<_EditItemDialog> {
             }
           },
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddItemDialog extends StatefulWidget {
+  final List<String> participantIds;
+
+  const _AddItemDialog({
+    required this.participantIds,
+  });
+
+  @override
+  State<_AddItemDialog> createState() => _AddItemDialogState();
+}
+
+class _AddItemDialogState extends State<_AddItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _quantityController = TextEditingController(text: '1');
+  final Map<String, TextEditingController> _userQuantityControllers = {};
+  final Map<String, int> _userQuantities = {};
+  final Map<String, Profile?> _profiles = {};
+  bool _isLoadingProfiles = true;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final userId in widget.participantIds) {
+      _userQuantityControllers[userId] = TextEditingController(text: '0');
+      _userQuantities[userId] = 0;
+    }
+    _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    try {
+      final response = await SupabaseConfig.client
+          .from('profiles')
+          .select()
+          .inFilter('id', widget.participantIds);
+
+      for (final data in response) {
+        final profile = Profile.fromJson(data);
+        _profiles[profile.id] = profile;
+      }
+    } catch (e) {
+      // Ignore, will show emails/user IDs
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingProfiles = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _priceController.dispose();
+    _quantityController.dispose();
+    for (final controller in _userQuantityControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  int _getTotalAssigned() {
+    return _userQuantities.values.fold(0, (sum, qty) => sum + qty);
+  }
+
+  void _distributeEqually() {
+    final total = int.tryParse(_quantityController.text) ?? 0;
+    if (total == 0) return;
+
+    final participantCount = widget.participantIds.length;
+    final baseQty = total ~/ participantCount;
+    final remainder = total % participantCount;
+
+    setState(() {
+      for (var i = 0; i < widget.participantIds.length; i++) {
+        final userId = widget.participantIds[i];
+        final qty = baseQty + (i < remainder ? 1 : 0);
+        _userQuantities[userId] = qty;
+        _userQuantityControllers[userId]!.text = qty.toString();
+      }
+    });
+  }
+
+  void _clearAll() {
+    setState(() {
+      for (final userId in widget.participantIds) {
+        _userQuantities[userId] = 0;
+        _userQuantityControllers[userId]!.text = '0';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalQty = int.tryParse(_quantityController.text) ?? 0;
+    final assignedQty = _getTotalAssigned();
+    final isValid = assignedQty == totalQty && totalQty > 0;
+
+    return AlertDialog(
+      title: const Text('Add Item'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Item Name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter item name';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _priceController,
+                decoration: const InputDecoration(
+                  labelText: 'Price (per item)',
+                  border: OutlineInputBorder(),
+                  prefixText: 'Rp ',
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter price';
+                  }
+                  final price = double.tryParse(value);
+                  if (price == null || price <= 0) {
+                    return 'Please enter valid price';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Total Quantity',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  setState(() {}); // Update UI
+                },
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter quantity';
+                  }
+                  final qty = int.tryParse(value);
+                  if (qty == null || qty <= 0) {
+                    return 'Please enter valid quantity';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Assign to participants:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '$assignedQty / $totalQty',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isValid ? Colors.green : Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 16),
+              if (_isLoadingProfiles)
+                const Center(child: CircularProgressIndicator()),
+              if (!_isLoadingProfiles) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: _distributeEqually,
+                          icon: const Icon(Icons.people, size: 16),
+                          label: const Text(
+                            'Split',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _clearAll,
+                          icon: const Icon(Icons.clear, size: 16),
+                          label: const Text(
+                            'Clear',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...widget.participantIds.map((userId) {
+                  final profile = _profiles[userId];
+                  final name =
+                      profile?.fullName ??
+                      profile?.email?.split('@')[0] ??
+                      'User';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: Colors.blue,
+                          backgroundImage: profile?.avatarUrl != null
+                              ? NetworkImage(profile!.avatarUrl!)
+                              : null,
+                          child: profile?.avatarUrl == null
+                              ? Text(
+                                  name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: TextFormField(
+                            controller: _userQuantityControllers[userId],
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            onChanged: (value) {
+                              setState(() {
+                                _userQuantities[userId] =
+                                    int.tryParse(value) ?? 0;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              final totalQty = int.parse(_quantityController.text);
+              final assignedQty = _getTotalAssigned();
+
+              if (assignedQty != totalQty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Total assigned ($assignedQty) must equal total quantity ($totalQty)',
+                    ),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(context, {
+                'name': _nameController.text.trim(),
+                'price': double.parse(_priceController.text),
+                'quantity': totalQty,
+                'userQuantities': _userQuantities,
+              });
+            }
+          },
+          child: const Text('Add'),
         ),
       ],
     );
