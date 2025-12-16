@@ -57,39 +57,78 @@ class PrivacyPolicyPage extends StatelessWidget {
               ),
             ),
 
-            // Sections
-            _buildSection(
+            // Gabungkan Section 1, 2, 3, dan 4 ke dalam satu card
+            _buildFixedSizeCard(
               width: cardWidth,
-              title: '1. Information We Collect',
-              content: [
-                '• Full name and email address',
-                '• Profile photo (avatar)',
-                '• Account-related application usage data',
-              ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  // Section 1
+                  Text(
+                    '1. Information We Collect',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '• Full name and email address\n'
+                    '• Profile photo (avatar)\n'
+                    '• Account-related application usage data',
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                  SizedBox(height: 16),
+
+                  // Section 2
+                  Text(
+                    '2. How We Use Your Information',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '• To manage your account\n'
+                    '• To display your profile information\n'
+                    '• To improve application performance',
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                  SizedBox(height: 16),
+
+                  // Section 3
+                  Text(
+                    '3. Data Storage',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Your data is securely stored using third-party services such as Supabase.',
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                  SizedBox(height: 16),
+
+                  // Section 4
+                  Text(
+                    '4. Changes to This Policy',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'This Privacy Policy may be updated from time to time. Any changes will be shown in the application.',
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                ],
+              ),
             ),
-            _buildSection(
-              width: cardWidth,
-              title: '2. How We Use Your Information',
-              content: [
-                '• To manage your account',
-                '• To display your profile information',
-                '• To improve application performance',
-              ],
-            ),
-            _buildSection(
-              width: cardWidth,
-              title: '3. Data Storage',
-              content: [
-                'Your data is securely stored using third-party services such as Supabase.',
-              ],
-            ),
-            _buildSection(
-              width: cardWidth,
-              title: '4. Changes to This Policy',
-              content: [
-                'This Privacy Policy may be updated from time to time. Any changes will be shown in the application.',
-              ],
-            ),
+
             const SizedBox(height: 24),
           ],
         ),
@@ -111,39 +150,6 @@ class PrivacyPolicyPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: child,
         ),
-      ),
-    );
-  }
-
-  // Helper untuk tiap section
-  Widget _buildSection({
-    required double width,
-    required String title,
-    required List<String> content,
-  }) {
-    return _buildFixedSizeCard(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...content.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                line,
-                style: const TextStyle(fontSize: 16, height: 1.5),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
