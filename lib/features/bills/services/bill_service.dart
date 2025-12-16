@@ -273,13 +273,20 @@ class BillService {
         }
       }
 
-      // Calculate subtotal
+      /**
+       * hitung-hitungan tax
+       */
       final subtotal = userTotals.values.fold<double>(0, (sum, amount) => sum + amount);
-      final tax = subtotal * (taxPercent / 100);
       final service = subtotal * (servicePercent / 100);
-      final grandTotal = subtotal + tax + service;
 
-      // Distribute tax and service proportionally
+      // tax dihitung dari subtotal + service
+      final subtotalAfterService = subtotal + service;
+      final tax = subtotalAfterService * (taxPercent / 100);
+      
+      // total
+      final grandTotal = subtotalAfterService + tax;
+
+      // bagi tax + service
       final taxServiceRatio = grandTotal / subtotal;
 
       // 5. Add members with calculated final_total
