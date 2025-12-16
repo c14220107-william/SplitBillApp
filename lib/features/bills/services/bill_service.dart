@@ -551,7 +551,7 @@ class BillService {
           .from('bill_members')
           .update({
             'proof_url': proofUrl,
-            'status': 'pending',
+            'status': 'PAID', // Set to PAID directly after upload
           })
           .eq('bill_id', billId)
           .eq('user_id', currentUserId!);

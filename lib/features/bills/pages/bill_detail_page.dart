@@ -720,6 +720,8 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
   void _viewPaymentProof(String? proofUrl) {
     if (proofUrl == null) return;
 
+    print('🖼️ Opening payment proof URL: $proofUrl');
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -752,14 +754,21 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
                     );
                   },
                   errorBuilder: (context, error, stackTrace) {
-                    return const Padding(
-                      padding: EdgeInsets.all(32),
+                    print('❌ Failed to load image: $error');
+                    return Padding(
+                      padding: const EdgeInsets.all(32),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.error_outline, size: 48, color: Colors.red),
-                          SizedBox(height: 8),
-                          Text('Failed to load image'),
+                          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                          const SizedBox(height: 8),
+                          const Text('Failed to load image'),
+                          const SizedBox(height: 4),
+                          Text(
+                            error.toString(),
+                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
                         ],
                       ),
                     );
