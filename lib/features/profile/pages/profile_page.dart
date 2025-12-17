@@ -158,36 +158,46 @@
     }
 
     Future<void> _editProfile() async {
-      final nameController = TextEditingController(text: _userName);
-
       final result = await showDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Edit Profile'),
-          content: TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'Full Name',
-              border: OutlineInputBorder(),
+        builder: (dialogContext) {
+          // Create controller inside dialog builder
+          final nameController = TextEditingController(text: _userName);
+          
+          return WillPopScope(
+            onWillPop: () async {
+              // Don't dispose here, let dialog handle it
+              return true;
+            },
+            child: AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+                autofocus: true,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(nameController.text);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
             ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, nameController.text),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+          );
+        },
       );
 
       if (result != null && result.isNotEmpty && mounted) {
         setState(() => _isLoading = true);
-        final messenger = ScaffoldMessenger.of(context);
 
         try {
           final user = SupabaseConfig.client.auth.currentUser;
@@ -203,7 +213,7 @@
                 _isLoading = false;
               });
 
-              messenger.showSnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Profile updated successfully!'),
                   backgroundColor: Colors.green,
@@ -214,7 +224,7 @@
         } catch (e) {
           if (mounted) {
             setState(() => _isLoading = false);
-            messenger.showSnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Failed to update profile: $e'),
                 backgroundColor: Colors.red,
@@ -223,8 +233,6 @@
           }
         }
       }
-
-      nameController.dispose();
     }
 
     @override
@@ -355,17 +363,6 @@
                     child: Column(
                       children: [
                         ListTile(
-                          leading: const Icon(Icons.notifications),
-                          title: const Text('Notifications'),
-                          trailing: Switch(
-                            value: true,
-                            onChanged: (value) {
-                              // TODO: Implement notification settings
-                            },
-                          ),
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
                           leading: const Icon(Icons.dark_mode),
                           title: const Text('Dark Mode'),
                           trailing: Consumer(
@@ -398,12 +395,6 @@
                   Card(
                     child: Column(
                       children: [
-                        ListTile(
-                          leading: const Icon(Icons.info),
-                          title: const Text('App Version'),
-                          trailing: const Text('1.0.0'),
-                        ),
-                        const Divider(height: 1),
                         ListTile(
                           leading: const Icon(Icons.privacy_tip),
                           title: const Text('Privacy Policy'),

@@ -125,14 +125,18 @@ class FCMService {
       }
 
       // Upsert FCM token to user_devices table
-      await _supabase.from('user_devices').upsert({
-        'user_id': userId,
-        'fcm_token': token,
-        'platform': 'android', // or 'ios' based on Platform
-        'updated_at': DateTime.now().toIso8601String(),
-      });
+      await _supabase.from('user_devices').upsert(
+        {
+          'user_id': userId,
+          'fcm_token': token,
+          'platform': 'android', // or 'ios' based on Platform
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'user_id,fcm_token',
+      );
 
-      print('✅ FCM token saved to Supabase');
+      print('✅ FCM token saved to Supabase for user: $userId');
+      print('🔑 Token: ${token.substring(0, 20)}...');
     } catch (e) {
       print('❌ Error saving FCM token: $e');
     }

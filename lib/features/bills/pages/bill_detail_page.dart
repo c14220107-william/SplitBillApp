@@ -241,7 +241,7 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
         );
 
         // Insert assignments
-        final userQuantities = result['userQuantities'] as Map<String, int>;
+        final userQuantities = result['userQuantities'] as Map<String, double>;
         final assignmentsData = userQuantities.entries
             .where((entry) => entry.value > 0)
             .map(
@@ -494,7 +494,10 @@ class _BillDetailPageState extends ConsumerState<BillDetailPage> {
 
                   return Column(
                     children: members
-                        .map((member) => _MemberCard(member: member))
+                        .map((member) => _MemberCard(
+                              member: member,
+                              billStatus: bill.status,
+                            ))
                         .toList(),
                   );
                 },
@@ -642,10 +645,10 @@ class _ItemCard extends ConsumerWidget {
     final participantIds = members.map((m) => m.userId).toList();
 
     // Build user quantities map from assignments
-    final userQuantities = <String, int>{};
+    final userQuantities = <String, double>{};
     for (final assignment in assignments) {
       userQuantities[assignment.userId] =
-          (userQuantities[assignment.userId] ?? 0) + assignment.quantity;
+          (userQuantities[assignment.userId] ?? 0.0) + assignment.quantity;
     }
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -670,7 +673,7 @@ class _ItemCard extends ConsumerWidget {
         );
 
         // Update assignments - delete old and insert new
-        final newUserQuantities = result['userQuantities'] as Map<String, int>;
+        final newUserQuantities = result['userQuantities'] as Map<String, double>;
 
         // Delete old assignments
         await SupabaseConfig.client
@@ -874,7 +877,7 @@ class _ItemCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     ...userMap.entries.map((entry) {
-                      final userQty = entry.value['quantity'] as int;
+                      final userQty = (entry.value['quantity'] as num).toDouble();
                       final profile = entry.value['profile'] as Profile?;
                       final name =
                           profile?.fullName ??
@@ -955,8 +958,12 @@ class _ItemCard extends ConsumerWidget {
 
 class _MemberCard extends ConsumerStatefulWidget {
   final BillMember member;
+  final BillStatus billStatus;
 
-  const _MemberCard({required this.member});
+  const _MemberCard({
+    required this.member,
+    required this.billStatus,
+  });
 
   @override
   ConsumerState<_MemberCard> createState() => _MemberCardState();
@@ -1186,9 +1193,10 @@ class _MemberCardState extends ConsumerState<_MemberCard> {
               ],
             ),
 
-            // Show confirm payment button for current user if unpaid
+            // Show confirm payment button for current user if unpaid and bill is finalized
             if (isCurrentUser &&
-                widget.member.status == PaymentStatus.unpaid) ...[
+                widget.member.status == PaymentStatus.unpaid &&
+                widget.billStatus == BillStatus.final_) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -1275,7 +1283,7 @@ class _SummaryRow extends StatelessWidget {
 class _EditItemDialog extends StatefulWidget {
   final BillItem item;
   final List<String> participantIds;
-  final Map<String, int> userQuantities;
+  final Map<String, double> userQuantities; // Comes from item_assignments
 
   const _EditItemDialog({
     required this.item,
@@ -1293,7 +1301,7 @@ class _EditItemDialogState extends State<_EditItemDialog> {
   late final TextEditingController _quantityController;
   late final TextEditingController _priceController;
   late Map<String, TextEditingController> _userQuantityControllers;
-  late Map<String, int> _userQuantities;
+  late Map<String, double> _userQuantities;
   Map<String, Profile> _profiles = {};
 
   @override
@@ -1307,11 +1315,13 @@ class _EditItemDialogState extends State<_EditItemDialog> {
       text: widget.item.price.toStringAsFixed(0),
     );
 
-    _userQuantities = Map.from(widget.userQuantities);
+    _userQuantities = {};
     _userQuantityControllers = {};
     for (var userId in widget.participantIds) {
+      final qty = widget.userQuantities[userId] ?? 0;
+      _userQuantities[userId] = qty.toDouble();
       _userQuantityControllers[userId] = TextEditingController(
-        text: _userQuantities[userId]?.toString() ?? '0',
+        text: qty.toString(),
       );
     }
 
@@ -1350,7 +1360,7 @@ class _EditItemDialogState extends State<_EditItemDialog> {
   }
 
   void _distributeEqually() {
-    final totalQty = int.tryParse(_quantityController.text) ?? 0;
+    final totalQty = double.tryParse(_quantityController.text) ?? 0;
     if (totalQty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1361,14 +1371,14 @@ class _EditItemDialogState extends State<_EditItemDialog> {
     }
 
     final userCount = widget.participantIds.length;
-    final qtyPerUser = totalQty ~/ userCount;
-    final remainder = totalQty % userCount;
+    final qtyPerUser = (totalQty / userCount).floorToDouble();
+    final remainder = totalQty - (qtyPerUser * userCount);
 
     setState(() {
       for (int i = 0; i < widget.participantIds.length; i++) {
         final userId = widget.participantIds[i];
-        final qty = qtyPerUser + (i < remainder ? 1 : 0);
-        _userQuantityControllers[userId]!.text = qty.toString();
+        final qty = qtyPerUser + (i < remainder ? 1.0 : 0.0);
+        _userQuantityControllers[userId]!.text = qty.toStringAsFixed(0);
         _userQuantities[userId] = qty;
       }
     });
@@ -1378,12 +1388,12 @@ class _EditItemDialogState extends State<_EditItemDialog> {
     setState(() {
       for (var userId in widget.participantIds) {
         _userQuantityControllers[userId]!.text = '0';
-        _userQuantities[userId] = 0;
+        _userQuantities[userId] = 0.0;
       }
     });
   }
 
-  int _getTotalAssigned() {
+  double _getTotalAssigned() {
     return _userQuantities.values.fold(0, (sum, qty) => sum + qty);
   }
 
@@ -1438,7 +1448,7 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                           if (value == null || value.isEmpty) {
                             return 'Required';
                           }
-                          final qty = int.tryParse(value);
+                          final qty = double.tryParse(value);
                           if (qty == null || qty <= 0) {
                             return 'Invalid';
                           }
@@ -1490,13 +1500,13 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                             ),
                           ),
                           Text(
-                            'Assigned: ${_getTotalAssigned()} / ${_quantityController.text}',
+                            'Assigned: ${_getTotalAssigned().toStringAsFixed(0)} / ${_quantityController.text}',
                             style: TextStyle(
                               fontSize: 11,
                               color:
-                                  _getTotalAssigned() ==
-                                      (int.tryParse(_quantityController.text) ??
-                                          0)
+                                  (_getTotalAssigned() -
+                                      (double.tryParse(_quantityController.text) ??
+                                          0)).abs() < 0.01
                                   ? Colors.green
                                   : Colors.orange,
                             ),
@@ -1586,7 +1596,7 @@ class _EditItemDialogState extends State<_EditItemDialog> {
                             onChanged: (value) {
                               setState(() {
                                 _userQuantities[userId] =
-                                    int.tryParse(value) ?? 0;
+                                    double.tryParse(value) ?? 0.0;
                               });
                             },
                           ),
@@ -1608,14 +1618,14 @@ class _EditItemDialogState extends State<_EditItemDialog> {
         ElevatedButton(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
-              final totalQty = int.parse(_quantityController.text);
+              final totalQty = double.parse(_quantityController.text);
               final assignedQty = _getTotalAssigned();
 
-              if (assignedQty != totalQty) {
+              if ((assignedQty - totalQty).abs() > 0.01) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Total assigned ($assignedQty) must equal total quantity ($totalQty)',
+                      'Total assigned (${assignedQty.toStringAsFixed(0)}) must equal total quantity (${totalQty.toStringAsFixed(0)})',
                     ),
                     backgroundColor: Colors.orange,
                   ),
@@ -1655,7 +1665,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController(text: '1');
   final Map<String, TextEditingController> _userQuantityControllers = {};
-  final Map<String, int> _userQuantities = {};
+  final Map<String, double> _userQuantities = {};
   final Map<String, Profile?> _profiles = {};
   bool _isLoadingProfiles = true;
 
@@ -1664,7 +1674,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     super.initState();
     for (final userId in widget.participantIds) {
       _userQuantityControllers[userId] = TextEditingController(text: '0');
-      _userQuantities[userId] = 0;
+      _userQuantities[userId] = 0.0;
     }
     _loadProfiles();
   }
@@ -1700,24 +1710,24 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     super.dispose();
   }
 
-  int _getTotalAssigned() {
+  double _getTotalAssigned() {
     return _userQuantities.values.fold(0, (sum, qty) => sum + qty);
   }
 
   void _distributeEqually() {
-    final total = int.tryParse(_quantityController.text) ?? 0;
+    final total = double.tryParse(_quantityController.text) ?? 0;
     if (total == 0) return;
 
     final participantCount = widget.participantIds.length;
-    final baseQty = total ~/ participantCount;
-    final remainder = total % participantCount;
+    final baseQty = (total / participantCount).floorToDouble();
+    final remainder = total - (baseQty * participantCount);
 
     setState(() {
       for (var i = 0; i < widget.participantIds.length; i++) {
         final userId = widget.participantIds[i];
-        final qty = baseQty + (i < remainder ? 1 : 0);
+        final qty = baseQty + (i < remainder ? 1.0 : 0.0);
         _userQuantities[userId] = qty;
-        _userQuantityControllers[userId]!.text = qty.toString();
+        _userQuantityControllers[userId]!.text = qty.toStringAsFixed(0);
       }
     });
   }
@@ -1725,7 +1735,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   void _clearAll() {
     setState(() {
       for (final userId in widget.participantIds) {
-        _userQuantities[userId] = 0;
+        _userQuantities[userId] = 0.0;
         _userQuantityControllers[userId]!.text = '0';
       }
     });
@@ -1733,9 +1743,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final totalQty = int.tryParse(_quantityController.text) ?? 0;
+    final totalQty = double.tryParse(_quantityController.text) ?? 0;
     final assignedQty = _getTotalAssigned();
-    final isValid = assignedQty == totalQty && totalQty > 0;
+    final isValid = (assignedQty - totalQty).abs() < 0.01 && totalQty > 0;
 
     return AlertDialog(
       title: const Text('Add Item'),
@@ -1794,7 +1804,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter quantity';
                   }
-                  final qty = int.tryParse(value);
+                  final qty = double.tryParse(value);
                   if (qty == null || qty <= 0) {
                     return 'Please enter valid quantity';
                   }
@@ -1813,7 +1823,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                     ),
                   ),
                   Text(
-                    '$assignedQty / $totalQty',
+                    '${assignedQty.toStringAsFixed(0)} / ${totalQty.toStringAsFixed(0)}',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -1911,7 +1921,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                             onChanged: (value) {
                               setState(() {
                                 _userQuantities[userId] =
-                                    int.tryParse(value) ?? 0;
+                                    double.tryParse(value) ?? 0.0;
                               });
                             },
                           ),
@@ -1933,14 +1943,14 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         ElevatedButton(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
-              final totalQty = int.parse(_quantityController.text);
+              final totalQty = double.parse(_quantityController.text);
               final assignedQty = _getTotalAssigned();
 
-              if (assignedQty != totalQty) {
+              if ((assignedQty - totalQty).abs() > 0.01) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Total assigned ($assignedQty) must equal total quantity ($totalQty)',
+                      'Total assigned (${assignedQty.toStringAsFixed(0)}) must equal total quantity (${totalQty.toStringAsFixed(0)})',
                     ),
                     backgroundColor: Colors.orange,
                   ),

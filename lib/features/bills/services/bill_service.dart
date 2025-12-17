@@ -234,7 +234,7 @@ class BillService {
             .insert({
               'bill_id': bill.id,
               'name': item['name'] as String,
-              'quantity': item['quantity'] as int,
+              'quantity': (item['quantity'] as num).toDouble(),
               'price': (item['price'] as num).toDouble(),
             })
             .select()
@@ -417,7 +417,7 @@ class BillService {
     required String billId,
     required String name,
     required double price,
-    int quantity = 1,
+    double quantity = 1,
   }) async {
     try {
       final response = await _supabase
@@ -442,7 +442,7 @@ class BillService {
     required String itemId,
     String? name,
     double? price,
-    int? quantity,
+    double? quantity,
   }) async {
     try {
       final updateData = <String, dynamic>{};
@@ -501,7 +501,7 @@ class BillService {
 
         for (final assignment in assignments) {
           final userId = assignment['user_id'] as String;
-          final quantity = assignment['quantity'] as int;
+          final quantity = (assignment['quantity'] as num).toDouble();
           final itemCost = price * quantity;
           userTotals[userId] = (userTotals[userId] ?? 0) + itemCost;
         }

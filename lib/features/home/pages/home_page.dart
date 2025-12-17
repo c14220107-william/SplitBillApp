@@ -132,50 +132,56 @@ class _CreatedBillsTab extends ConsumerWidget {
 
     return billsAsync.when(
       data: (bills) {
-        if (bills.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 80,
-                  color: Colors.grey[400],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No bills created yet',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tap the + button to create your first bill',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(myCreatedBillsProvider);
           },
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: bills.length,
-            itemBuilder: (context, index) {
-              final bill = bills[index];
-              return _BillCard(
-                bill: bill,
-                isHost: true,
-              );
-            },
-          ),
+          child: bills.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 80,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No bills created yet',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Pull down to refresh',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: bills.length,
+                  itemBuilder: (context, index) {
+                    final bill = bills[index];
+                    return _BillCard(
+                      bill: bill,
+                      isHost: true,
+                    );
+                  },
+                ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -208,50 +214,56 @@ class _InvitedBillsTab extends ConsumerWidget {
 
     return billsAsync.when(
       data: (bills) {
-        if (bills.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.mail_outline,
-                  size: 80,
-                  color: Colors.grey[400],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No invitations yet',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'You\'ll see bills here when someone invites you',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(myInvitedBillsProvider);
           },
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: bills.length,
-            itemBuilder: (context, index) {
-              final bill = bills[index];
-              return _BillCard(
-                bill: bill,
-                isHost: false,
-              );
-            },
-          ),
+          child: bills.isEmpty
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.mail_outline,
+                              size: 80,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No invitations yet',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Pull down to refresh',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: bills.length,
+                  itemBuilder: (context, index) {
+                    final bill = bills[index];
+                    return _BillCard(
+                      bill: bill,
+                      isHost: false,
+                    );
+                  },
+                ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

@@ -4,7 +4,7 @@ class ItemAssignment {
   final String id;
   final String itemId;
   final String userId;
-  final int quantity; // Quantity assigned to this user
+  final double quantity; // Quantity assigned to this user
   final DateTime assignedAt;
   
   // Optional: Populated via join/eager loading
@@ -24,7 +24,7 @@ class ItemAssignment {
       id: json['id'] as String,
       itemId: json['item_id'] as String,
       userId: json['user_id'] as String,
-      quantity: json['quantity'] as int? ?? 1, // Default to 1 for backward compatibility
+      quantity: (json['quantity'] as num?)?.toDouble() ?? 1.0, // Default to 1.0 for backward compatibility
       assignedAt: DateTime.parse(json['assigned_at'] as String),
       userProfile: json['profiles'] != null
           ? Profile.fromJson(json['profiles'] as Map<String, dynamic>)
@@ -46,7 +46,7 @@ class ItemAssignment {
     String? id,
     String? itemId,
     String? userId,
-    int? quantity,
+    double? quantity,
     DateTime? assignedAt,
     Profile? userProfile,
   }) {
